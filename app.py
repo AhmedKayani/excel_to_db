@@ -42,37 +42,63 @@ class ToSQL:
 
     # This function splits the tables in a sheet
     def split_tables(self, df):
-        # Droping empty rows first
-        df = df.dropna(how='all')
 
+        # This will hold all the tables
         tables = {}
+
+        # This holds the empty columns which helps us to separate the tables
         col_ranges = df.columns[df.isna().all()].tolist()
+
+        # Marks the beginning of first table
         start = 0
+
+        # Will be used to store the date column
         date_column = None
 
+        # Used to detect the table separator entry column
         for i, col in enumerate(df.columns):
+
+            # Checking if the column is an empty one or if the column is the last one
             if col in col_ranges or i == len(df.columns) - 1:
+
+                # Sets the end index for slicing the table from dataframe. If last column then end range is in the end
                 end = i if col in col_ranges else i + 1
+
+                # Slicing the table using the start and end indexes
                 table_df = df.iloc[:, start:end]
+
+                # Testing the code
+                # Dropping the empty rows and getting their indexes
+                empty_row_indexes = table_df[table_df.isna().all(axis=1)].index
+                # print(f"These are the empty indexes {empty_row_indexes}")
+
+                table_df = table_df.dropna(how='all')
+
 
                 # Checking if the DataFrame has any valid columns before dropping rows
                 table_df_filtered = self.filter_unnamed_columns(table_df)
                 if table_df_filtered.dropna(how='all').empty and i != len(df.columns) - 1:
                     print(f"Skipping empty DataFrame between columns {start} and {end}")
+
+                    # Increments to mark the start of next table
                     start = i + 1
+
+                    # Going to the next iteration
                     continue 
 
                 # drop empty rows after checking columns
                 table_df = table_df_filtered.dropna(how='all')
-                if not table_df.columns.empty:  # Check if there are any columns
+                if not table_df.columns.empty: 
                     table_name = table_df.columns[0]
-                    # Capture the date column from the first table
+
+                    # Capture the date column from the first table if it is empty
                     if date_column is None:
                         date_column = table_df.iloc[:, 0]
                     else:
-                        # Ensure the date column is aligned with the table_df
-                        if len(date_column) > len(table_df):
-                            date_column = date_column.iloc[:len(table_df)]
+                        
+                        # Dropping the indexes of the date column to align with the tables after the first table
+                        valid_indexes = date_column.index.intersection(empty_row_indexes)
+                        date_column = date_column.drop(valid_indexes)
                         table_df = pd.concat([date_column.reset_index(drop=True), table_df.reset_index(drop=True)], axis=1)
 
                     tables[table_name] = table_df
