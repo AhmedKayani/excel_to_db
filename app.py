@@ -84,18 +84,26 @@ class ToSQL:
                     start = i + 1
 
                     # Going to the next iteration
-                    continue 
+                    continue
 
                 # drop empty rows after checking columns
                 table_df = table_df_filtered.dropna(how='all')
                 if not table_df.columns.empty: 
                     table_name = table_df.columns[0]
 
+                    # For situations where each table already has its own column in sheets
+                    no_date_column_present = True
+
+                    for column_name, _ in table_df.dtypes.iteritems():
+                        if 'date' in column_name.lower():
+                            no_date_column_present = False
+                            break
+
                     # Capture the date column from the first table if it is empty
+                    
                     if date_column is None:
                         date_column = table_df.iloc[:, 0]
-                    else:
-                        
+                    elif no_date_column_present:
                         # Dropping the indexes of the date column to align with the tables after the first table
                         valid_indexes = date_column.index.intersection(empty_row_indexes)
                         date_column = date_column.drop(valid_indexes)
@@ -212,7 +220,7 @@ class ToSQL:
                 table_name_sheet = self.extract_table_names_in_sheet(sheet)
 
                 for name_of_table in table_name_sheet:
-                    logger.info(name_of_table)
+                    print(f'name_of_table\n')
                 print("\n\n")
 
         except Exception as e:
@@ -238,21 +246,24 @@ class ToSQL:
             elif 'float' in str(self.df[column].dtype) or 'capacity' in column.lower():
                 self.df[column] = pd.to_numeric(self.df[column], errors='coerce').fillna(0.0)
 
+
     def insert_into_DB(self):
         Session = sessionmaker(bind=self.engine)
         session = Session()
 
         for index, row in self.df.iterrows():
             if 'date' in row and pd.isnull(row['date']):
-                print(f"Skipping row {index} due to invalid date")
+                # print(f"Skipping row {index} due to invalid date")
                 continue
             row_data = {column: row[column] for column in self.df.columns}
             network_data = self.NetworkData(**row_data)
-            session.merge(network_data)  # Use merge to update or insert
-            # session.add(network_data)
+
+            # Either updates or inserts the record
+            session.merge(network_data)  
 
         session.commit()
 
+    # Used to check if data is saved to the table
     def is_data_saved_db(self):
         Session = sessionmaker(bind=self.engine)
         session = Session()
@@ -276,7 +287,7 @@ def transfer_data_db(path):
     # Printing all the sheet names
     print("Following are all the sheets:")
     for sheet in sheet_names:
-        logger.info(f'{sheet}')
+        print(f'{sheet}\n')
 
     # Transferring data from each sheet to the database
     for sheet in sheet_names:
@@ -286,4 +297,4 @@ def transfer_data_db(path):
 transfer_data_db(file_path)
 
 # For transferring just one sheet for testing
-# to_sql = ToSQL(file_path, "GGCs", db_uri)
+# to_sql = ToSQL(file_path, "IB-OB-TB", db_uri)
