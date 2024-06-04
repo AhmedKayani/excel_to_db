@@ -4,6 +4,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import logging
+import hashlib
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -91,18 +92,18 @@ class ToSQL:
                 if not table_df.columns.empty: 
                     table_name = table_df.columns[0]
 
-                    # For situations where each table already has its own column in sheets
+                    # For situations where each table already has its own column in sheets like in IB-OB-TB
                     no_date_column_present = True
-
                     for column_name, _ in table_df.dtypes.iteritems():
                         if 'date' in column_name.lower():
                             no_date_column_present = False
                             break
 
                     # Capture the date column from the first table if it is empty
-                    
                     if date_column is None:
                         date_column = table_df.iloc[:, 0]
+
+                    # Only adding the date column if it is not present
                     elif no_date_column_present:
                         # Dropping the indexes of the date column to align with the tables after the first table
                         valid_indexes = date_column.index.intersection(empty_row_indexes)
@@ -113,6 +114,10 @@ class ToSQL:
                 else:
                     print(f"Empty DataFrame between columns {start} and {end}")
                 start = i + 1
+
+        # End of for loop
+
+        # By this point, we will have all the tables included in our array
 
         # Checking the last segment if it was not added so all tables are added
         if start < len(df.columns):
@@ -128,12 +133,13 @@ class ToSQL:
 
     # Transferring all the tables to DB from a sheet
     def transfer_all_tables_from_sheet(self, tables, table_headings):
-        for table_heading, (table_name, table_df) in zip(table_headings, tables.items()):
+        for table_heading, (_, table_df) in zip(table_headings, tables.items()):
             table_df = self.filter_unnamed_columns(table_df)  # Filter unnamed columns again
             table_df.columns = self.clean_column_names(table_df.columns)
             self.df = table_df  # Set the current dataframe to the table dataframe
-            print(f"Transferring data of table {table_heading}")
+            print(f"\nTransferring data of table {table_heading}\n")
 
+            
             if len(table_heading) > 59:
                 table_heading = "long_table"
 
@@ -243,7 +249,7 @@ class ToSQL:
             if 'date' in column.lower():
                 self.df[column] = pd.to_datetime(self.df[column], errors='coerce')
                 self.df[column] = self.df[column].apply(lambda x: None if pd.isnull(x) else x)  # Handle NaT
-            elif 'float' in str(self.df[column].dtype) or 'capacity' in column.lower():
+            elif 'float' in str(self.df[column].dtype):
                 self.df[column] = pd.to_numeric(self.df[column], errors='coerce').fillna(0.0)
 
 
@@ -251,7 +257,7 @@ class ToSQL:
         Session = sessionmaker(bind=self.engine)
         session = Session()
 
-        for index, row in self.df.iterrows():
+        for _, row in self.df.iterrows():
             if 'date' in row and pd.isnull(row['date']):
                 # print(f"Skipping row {index} due to invalid date")
                 continue
@@ -262,6 +268,8 @@ class ToSQL:
             session.merge(network_data)  
 
         session.commit()
+
+
 
     # Used to check if data is saved to the table
     def is_data_saved_db(self):
@@ -297,4 +305,4 @@ def transfer_data_db(path):
 transfer_data_db(file_path)
 
 # For transferring just one sheet for testing
-# to_sql = ToSQL(file_path, "IB-OB-TB", db_uri)
+# to_sql = ToSQL(file_path, "Capacity Info", db_uri)
